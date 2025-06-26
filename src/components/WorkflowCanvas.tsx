@@ -4,7 +4,6 @@ import { RotateCcwIcon, ZapIcon, ChevronDownIcon, ChevronUpIcon, CheckCircleIcon
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { generateWorkflowExecutionResults, type LocationData } from '../services/geminiService';
-import { omniDimensionService, type CallDispatchResponse } from '../services/omniDimensionService';
 
 interface WorkflowStep {
   stepNumber: number;
@@ -34,8 +33,6 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   const [executionResults, setExecutionResults] = useState<string>('');
   const [showResults, setShowResults] = useState(false);
   const [isLoadingResults, setIsLoadingResults] = useState(false);
-  const [stepResults, setStepResults] = useState<Record<number, any>>({});
-  const [realCallsEnabled, setRealCallsEnabled] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // Calculate centered positions for the entire workflow network
@@ -204,68 +201,6 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   };
 
   // Parse execution results markdown into structured sections
-  // Generate mock search results for demonstration
-  const generateMockSearchResults = (query: string, location?: LocationData | null): string => {
-    const isLocationBased = query.toLowerCase().includes('near me') || query.toLowerCase().includes('nearby');
-    const locationContext = location ? ` near ${location.address || `${location.latitude}, ${location.longitude}`}` : '';
-    
-    if (query.toLowerCase().includes('dentist')) {
-      return `Found dental practices${locationContext}:
-
-1. **Smile Dental Center**
-   Address: 123 Main Street, Cityville 12345
-   Phone: +1-555-123-4567
-   Hours: Mon-Fri 8AM-6PM
-   Services: General dentistry, cleanings, fillings
-   
-2. **Family Dental Care**
-   Address: 456 Oak Avenue, Cityville 12345  
-   Phone: +1-555-987-6543
-   Hours: Mon-Sat 9AM-7PM
-   Services: Family dentistry, cosmetic procedures
-   
-3. **Advanced Dental Solutions**
-   Address: 789 Pine Street, Cityville 12345
-   Phone: +1-555-456-7890
-   Hours: Tue-Fri 8AM-5PM, Sat 9AM-2PM
-   Services: Implants, orthodontics, oral surgery`;
-    }
-    
-    if (query.toLowerCase().includes('restaurant')) {
-      return `Found restaurants${locationContext}:
-
-1. **The Garden Bistro**
-   Address: 234 Elm Street, Cityville 12345
-   Phone: +1-555-234-5678
-   Cuisine: American, Farm-to-table
-   Hours: Daily 11AM-10PM
-   
-2. **Mama's Italian Kitchen**
-   Address: 567 Maple Drive, Cityville 12345
-   Phone: +1-555-345-6789
-   Cuisine: Italian, Family-style
-   Hours: Mon-Sun 5PM-11PM
-   
-3. **Sushi Zen**
-   Address: 890 Cedar Lane, Cityville 12345
-   Phone: +1-555-567-8901
-   Cuisine: Japanese, Sushi Bar
-   Hours: Tue-Sun 12PM-10PM`;
-    }
-    
-    return `Found businesses for "${query}"${locationContext}:
-
-1. **Local Business One**
-   Address: 111 First Street, Cityville 12345
-   Phone: +1-555-111-2222
-   Hours: Mon-Fri 9AM-5PM
-   
-2. **Service Provider Two**
-   Address: 222 Second Avenue, Cityville 12345
-   Phone: +1-555-333-4444
-   Hours: Daily 8AM-8PM`;
-  };
-
   const parseExecutionResults = (markdown: string) => {
     const sections = {
       summary: '',
@@ -302,118 +237,21 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     return sections;
   };
 
-  // Execute workflow with real integrations
+  // Simulate workflow execution with Gemini results
   const runWorkflow = async () => {
     setIsRunning(true);
     setCompletedSteps(new Set());
     setExecutionProgress(0);
     setExecutionResults('');
     setShowResults(false);
-    setStepResults({});
-    
-    // Check if OmniDimension service is available
-    try {
-      await omniDimensionService.healthCheck();
-      setRealCallsEnabled(true);
-    } catch (error) {
-      console.log('OmniDimension service not available, using simulation mode');
-      setRealCallsEnabled(false);
-    }
     
     for (let i = 0; i < steps.length; i++) {
-      const step = steps[i];
       setActiveStep(i + 1);
       setExecutionProgress(((i + 1) / steps.length) * 100);
       
-      try {
-        // Execute step based on function type
-        if (step.functionName.toLowerCase().includes('gemini search')) {
-          // Simulate Gemini Search and store results
-          await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
-          
-          // Mock search results for demonstration (in real app, this would come from actual Gemini)
-          const mockSearchResults = generateMockSearchResults(userQuery, locationData);
-          setStepResults(prev => ({
-            ...prev,
-            [step.stepNumber]: {
-              type: 'gemini_search',
-              results: mockSearchResults,
-              businesses: omniDimensionService.extractBusinessInfo(mockSearchResults)
-            }
-          }));
-          
-        } else if (step.functionName.toLowerCase().includes('omnidimension call') && realCallsEnabled) {
-          // Real OmniDimension Call execution
-          await new Promise(resolve => setTimeout(resolve, 1000)); // Brief delay
-          
-          try {
-            // Get search results from previous step
-            const previousStepResult = Object.values(stepResults).find(
-              (result: any) => result.type === 'gemini_search'
-            );
-            
-            if (previousStepResult?.businesses?.businesses?.length > 0) {
-              const businesses = previousStepResult.businesses.businesses;
-              const callPurpose = omniDimensionService.determineCallPurpose(userQuery);
-              
-              // Dispatch real calls to found businesses
-              const callResponse = await omniDimensionService.dispatchCall({
-                user_query: userQuery,
-                business_info: JSON.stringify(businesses),
-                phone_numbers: businesses.flatMap((b: any) => b.phones),
-                call_purpose: callPurpose
-              });
-              
-              setStepResults(prev => ({
-                ...prev,
-                [step.stepNumber]: {
-                  type: 'omnidimension_call',
-                  results: callResponse,
-                  real_calls: true
-                }
-              }));
-              
-            } else {
-              throw new Error('No businesses found from previous search step');
-            }
-          } catch (error) {
-            console.error('Real call execution failed:', error);
-            // Fallback to simulation
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            setStepResults(prev => ({
-              ...prev,
-              [step.stepNumber]: {
-                type: 'omnidimension_call',
-                results: { error: `Real call failed: ${error.message}` },
-                real_calls: false
-              }
-            }));
-          }
-          
-        } else {
-          // Simulate other function types
-          const executionTime = 2000 + Math.random() * 2000;
-          await new Promise(resolve => setTimeout(resolve, executionTime));
-          
-          setStepResults(prev => ({
-            ...prev,
-            [step.stepNumber]: {
-              type: step.functionName.toLowerCase().replace(/\s+/g, '_'),
-              results: { simulated: true, message: `${step.functionName} executed successfully` }
-            }
-          }));
-        }
-        
-      } catch (error) {
-        console.error(`Error executing step ${step.stepNumber}:`, error);
-        setStepResults(prev => ({
-          ...prev,
-          [step.stepNumber]: {
-            type: 'error',
-            results: { error: error.message }
-          }
-        }));
-      }
+      // Simulate step execution time (2-4 seconds per step)
+      const executionTime = 2000 + Math.random() * 2000;
+      await new Promise(resolve => setTimeout(resolve, executionTime));
       
       setCompletedSteps(prev => new Set([...prev, i + 1]));
       setActiveStep(null);
@@ -427,80 +265,15 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     setIsRunning(false);
     setExecutionProgress(100);
 
-    // Generate comprehensive execution results
+    // Generate execution results using Gemini with location data
     setIsLoadingResults(true);
     try {
-      // Create enhanced results based on actual step execution
-      let enhancedResults = '';
-      
-      // Check if we have real OmniDimension call results
-      const omniCallResults = Object.values(stepResults).find(
-        (result: any) => result?.type === 'omnidimension_call'
-      ) as any;
-      
-      if (omniCallResults?.real_calls && omniCallResults?.results) {
-        // Generate results with real call data
-        enhancedResults = generateRealCallResults(omniCallResults.results, userQuery, title);
-      } else {
-        // Fallback to Gemini-generated results
-        enhancedResults = await generateWorkflowExecutionResults(userQuery, steps, title, locationData || undefined);
-      }
-      
-      setExecutionResults(enhancedResults);
+      const results = await generateWorkflowExecutionResults(userQuery, steps, title, locationData || undefined);
+      setExecutionResults(results);
       setShowResults(true);
     } catch (error) {
       console.error('Error generating execution results:', error);
-      setExecutionResults(generateFallbackResults());
-      setShowResults(true);
-    } finally {
-      setIsLoadingResults(false);
-    }
-  };
-
-  // Generate results based on real OmniDimension call data
-  const generateRealCallResults = (callResponse: CallDispatchResponse, query: string, workflowTitle: string): string => {
-    const formattedCallResults = omniDimensionService.formatCallResults(callResponse);
-    
-    return `## 🎯 Workflow Execution Results
-
-### 📊 Execution Summary
-**Status:** ✅ Successfully Completed with Real Calls
-**Total Steps:** ${steps.length}
-**Real Calls Dispatched:** ${callResponse.calls_dispatched}
-**Agents Deployed:** ${steps.map(step => step.functionName).join(', ')}
-${locationData ? `**Location Context:** Results enhanced with user location data` : ''}
-
-${formattedCallResults}
-
-### 📋 Final Deliverables
-Your workflow "${workflowTitle}" has been successfully executed with REAL phone calls for: "${query}"
-${callResponse.calls_dispatched > 0 ? `✅ ${callResponse.calls_dispatched} actual calls were dispatched to businesses` : '⚠️ No calls were successfully dispatched'}
-
-### 📈 Performance Metrics
-- **Success Rate:** ${((callResponse.calls_dispatched / callResponse.results.length) * 100).toFixed(0)}%
-- **Data Accuracy:** High (Real phone numbers extracted)
-- **Response Time:** ${steps.reduce((total, step) => {
-      const duration = parseInt(step.duration.match(/\d+/)?.[0] || '2');
-      return total + duration;
-    }, 0)} seconds
-- **Agent Coordination:** Seamless with OmniDimension API
-
-### 💡 Key Insights & Recommendations
-- Real phone calls were successfully initiated using OmniDimension API
-- Call contexts were automatically generated based on your query
-- All calls include intelligent conversation handling by AI agents
-- Call logs and transcripts will be available in your OmniDimension dashboard
-
-### 🔄 Next Steps
-- Monitor call outcomes in your OmniDimension dashboard
-- Review call transcripts and summaries when available
-- Set up webhooks for automatic call result notifications
-- Consider scheduling similar workflows for regular execution`;
-  };
-
-  // Generate fallback results if everything fails
-  const generateFallbackResults = (): string => {
-    return `
+      setExecutionResults(`
 ## 🎯 Workflow Execution Results
 
 ### 📊 Execution Summary
@@ -520,7 +293,11 @@ Your workflow "${title}" has been successfully executed according to your requir
 - Your automation workflow completed successfully
 - All steps executed as planned with expected outputs${locationData ? ` using your location data` : ''}
 - Consider scheduling this workflow for regular execution
-      `;
+      `);
+      setShowResults(true);
+    } finally {
+      setIsLoadingResults(false);
+    }
   };
 
   const resetWorkflow = () => {
